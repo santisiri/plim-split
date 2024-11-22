@@ -1,40 +1,54 @@
 import os
-from flask import Flask, request, send_file, render_template
-from werkzeug.utils import secure_filename
-from video_scene_splitter import main as split_video
-import zipfile
-import tempfile
+from flask import Flask, request, render_template, send_from_directory, Response
+from video_scene_splitter import split_video, detect_scenes
+import json
 
 app = Flask(__name__)
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'output'
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+def generate_progress():
+    def progress_callback(progress, status):
+        yield f"data: {json.dumps({'progress': progress, 'status': status})}\n\n"
+
+    return progress_callback
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     if request.method == 'POST':
         if 'file' not in request.files:
-            return 'No file part'
+            return 'No file uploaded', 400
+        
         file = request.files['file']
         if file.filename == '':
-            return 'No selected file'
+            return 'No file selected', 400
+        
         if file:
-            filename = secure_filename(file.filename)
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                file_path = os.path.join(tmpdirname, filename)
-                file.save(file_path)
+            filename = file.filename
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(file_path)
+            
+            def generate():
+                progress_cb = generate_progress()
+                # First detect scenes
+                scenes = detect_scenes(file_path)
+                # Then split the video using detected scenes
+                split_video(file_path, scenes, OUTPUT_FOLDER, progress_callback=progress_cb)
                 
-                # Process the video
-                output_dir = os.path.join(tmpdirname, 'output')
-                os.makedirs(output_dir, exist_ok=True)
-                split_video(file_path, output_dir)
-                
-                # Zip the output files
-                zip_path = os.path.join(tmpdirname, 'scenes.zip')
-                with zipfile.ZipFile(zip_path, 'w') as zipf:
-                    for root, dirs, files in os.walk(output_dir):
-                        for file in files:
-                            zipf.write(os.path.join(root, file), file)
-                
-                return send_file(zip_path, as_attachment=True)
-    return render_template('upload.html')
+                # Send the list of generated scenes
+                scene_files = os.listdir(OUTPUT_FOLDER)
+                yield f"data: {json.dumps({'scenes': scene_files})}\n\n"
+            
+            return Response(generate(), mimetype='text/event-stream')
+    
+    return render_template('index.html')
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_from_directory(OUTPUT_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)

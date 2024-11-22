@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Scene Splitter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f7fa;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1a1a1a;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .upload-section {
+            background: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #94a3b8;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-button {
+            background: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .upload-button:hover {
+            background: #2563eb;
+        }
+
+        .progress-container {
+            margin-top: 2rem;
+            display: none;
+        }
+
+        .progress-bar {
+            background-color: #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 8px;
+        }
+
+        .progress-bar-fill {
+            background-color: #3b82f6;
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #status {
+            margin-top: 1rem;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .scene-list {
+            margin-top: 2rem;
+            display: none;
+        }
+
+        .scene-list h2 {
+            color: #1a1a1a;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .scene-item {
+            background: #f8fafc;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .scene-item a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .scene-item a:hover {
+            color: #2563eb;
+        }
+
+        /* Download icon */
+        .download-icon {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Animation for processing state */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .processing {
+            animation: pulse 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Scene Splitter</h1>
+        
+        <div class="upload-section" id="dropZone">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <input type="file" name="file" accept="video/*" class="file-input" id="fileInput">
+                <button type="button" class="upload-button" onclick="document.getElementById('fileInput').click()">
+                    Choose Video File
+                </button>
+                <p style="margin-top: 1rem; color: #64748b;">or drag and drop video file here</p>
+            </form>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
+            <div id="status"></div>
+        </div>
+
+        <div class="scene-list" id="sceneList">
+            <h2>Generated Scenes</h2>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadForm = document.getElementById('uploadForm');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const status = document.getElementById('status');
+        const sceneList = document.getElementById('sceneList');
+
+        // Drag and drop functionality
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#3b82f6';
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#cbd5e1';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#cbd5e1';
+            fileInput.files = e.dataTransfer.files;
+            handleUpload();
+        });
+
+        fileInput.addEventListener('change', handleUpload);
+
+        async function handleUpload() {
+            const formData = new FormData(uploadForm);
+            progressContainer.style.display = 'block';
+            status.textContent = 'Uploading and processing video...';
+            status.classList.add('processing');
+            
+            try {
+                const response = await fetch('/', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const reader = response.body.getReader();
+                
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    
+                    const text = new TextDecoder().decode(value);
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.progress) {
+                            progressBarFill.style.width = `${data.progress}%`;
+                            status.textContent = data.status || 'Processing...';
+                        } else if (data.scenes) {
+                            status.classList.remove('processing');
+                            sceneList.style.display = 'block';
+                            sceneList.innerHTML = '<h2>Generated Scenes</h2>';
+                            data.scenes.forEach((scene, index) => {
+                                const div = document.createElement('div');
+                                div.className = 'scene-item';
+                                div.innerHTML = `
+                                    <span>Scene ${index + 1}</span>
+                                    <a href="/download/${scene}" download>
+                                        Download
+                                        <svg class="download-icon" viewBox="0 0 24 24">
+                                            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                                        </svg>
+                                    </a>`;
+                                sceneList.appendChild(div);
+                            });
+                        }
+                    } catch (e) {
+                        console.log('Progress update error:', e);
+                    }
+                }
+                
+                status.textContent = 'Processing complete!';
+            } catch (error) {
+                status.textContent = 'Error: ' + error.message;
+                status.classList.remove('processing');
+            }
+        }
+    </script>
+</body>
+</html>
+

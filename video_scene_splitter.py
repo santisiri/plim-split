@@ -4,43 +4,53 @@ import os
 
 def detect_scenes(video_path, threshold=30):
     clip = VideoFileClip(video_path)
+    scenes = [0]  # Start with first frame
     prev_frame = None
-    scenes = [0]
+    frame_count = 0
     
-    for i, frame in enumerate(clip.iter_frames()):
+    for current_frame in clip.iter_frames():
         if prev_frame is not None:
-            diff = np.abs(frame - prev_frame).mean()
+            # Calculate difference between frames
+            diff = np.mean(np.abs(current_frame - prev_frame))
             if diff > threshold:
-                scenes.append(i)
-        prev_frame = frame
+                scenes.append(frame_count)
+        
+        prev_frame = current_frame
+        frame_count += 1
     
-    scenes.append(int(clip.fps * clip.duration))
+    scenes.append(frame_count)  # Add last frame
     clip.close()
     return scenes
 
-def split_video(video_path, scenes, output_dir):
+def split_video(video_path, scenes, output_dir, progress_callback=None):
     clip = VideoFileClip(video_path)
     total_frames = int(clip.fps * clip.duration)
+    total_scenes = len(scenes) - 1
     
-    for i in range(len(scenes) - 1):
+    for i in range(total_scenes):
+        if progress_callback:
+            progress = (i / total_scenes) * 100
+            progress_callback(progress, f"Processing scene {i+1} of {total_scenes}")
+            
         start_frame = scenes[i]
-        end_frame = min(scenes[i+1], total_frames)  # Ensure we don't exceed total frames
+        end_frame = min(scenes[i+1], total_frames)
         
-        # Convert frame numbers to times
         start_time = start_frame / clip.fps
         end_time = end_frame / clip.fps
         
         output_path = os.path.join(output_dir, f"scene_{i+1}.mp4")
         
-        # Extract frames for this time segment
         frames = []
         for t in np.arange(start_time, end_time, 1/clip.fps):
-            if t <= clip.duration:  # Only process frames within video duration
+            if t <= clip.duration:
                 frames.append(clip.get_frame(t))
         
-        if frames:  # Only save if we have frames
+        if frames:
             import imageio
             imageio.mimsave(output_path, frames, fps=clip.fps)
+    
+    if progress_callback:
+        progress_callback(100, "Processing complete!")
     
     clip.close()
 
